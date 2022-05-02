@@ -1,0 +1,13 @@
+[package]
+name = "wattbar"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wayland-client = "0.29"
+wayland-protocols = "0.29"
+anyhow = "1"
+smithay-client-toolkit = { version = "0.15", default-features = false, features = ["calloop"] }
+calloop = "0.9.3"
