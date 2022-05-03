@@ -1,12 +1,17 @@
-use zbus;
-use upower_dbus;
-use std::sync::{Arc, RwLock, mpsc::{Sender, Receiver}};
-use std::sync::mpsc::SyncSender;
 use crate::PowerState;
+use std::sync::mpsc::SyncSender;
+use std::sync::{
+    mpsc::{Receiver, Sender},
+    Arc, RwLock,
+};
+use upower_dbus;
+
+use calloop::channel::Sender as CalloopSender;
+use zbus;
 
 pub struct PowerReporter {
-    sender: Sender<()>,
-    status: Arc<RwLock<Option<PowerState>>>,
+    pub sender: CalloopSender<()>,
+    pub status: Arc<RwLock<Option<PowerState>>>,
 }
 
 pub struct PowerReceiver {
@@ -14,22 +19,16 @@ pub struct PowerReceiver {
     status: Arc<RwLock<Option<PowerState>>>,
 }
 
-pub struct UPowerMonitor {
-    reporter: PowerReporter,
-
-    dbus: zbus::Connection,
-}
-
 macro_rules! catch {
     ($expr:block) => {
-        (|| { $expr })()
+        (|| $expr)()
     };
 }
 
 pub fn spawn_upower(reporter: PowerReporter) -> anyhow::Result<()> {
     let (start_send, start_receive) = std::sync::mpsc::sync_channel(1);
-    std::thread::spawn(|| {
-        let failure = upower_run(reporter, &start_send);;
+    std::thread::spawn(move || {
+        let failure = upower_run(reporter, &start_send);
         if failure.is_err() {
             start_send.send(failure);
         }
@@ -38,32 +37,21 @@ pub fn spawn_upower(reporter: PowerReporter) -> anyhow::Result<()> {
     start_receive.recv()?
 }
 
-async fn upower_run(reporter: PowerReporter, start_send: &SyncSender<anyhow::Result<()>>) {
+fn upower_run(
+    reporter: PowerReporter,
+    start_send: &SyncSender<anyhow::Result<()>>,
+) -> anyhow::Result<()> {
     let dbus = zbus::blocking::Connection::system()?;
-    let display_device_path = upower_dbus::UPowerProxyBlocking::new(&connection).await?
-        .get_display_device().await?;
-    zbus::blocking::fdo::PropertiesProxy::builder(&dbus)
-        
-
-    let display_proxy = upower_dbus::DeviceProxyBlocking::builder()
+    let display_device_path = upower_dbus::UPowerProxyBlocking::new(&dbus)?.get_display_device()?;
+    let display_proxy = zbus::blocking::fdo::PropertiesProxy::builder(&dbus)
+        .destination("org.freedesktop.UPower")?
         .path(display_device_path)?
-        .build().await?;
+        .cache_properties(zbus::CacheProperties::No)
+        .build()?;
 
     start_send.send(Ok(())).unwrap();
-}
 
-impl UPowerMonitor {
-    fn spawn(reporter: PowerReporter) -> anyhow::Result<Self> {
-
-        futures::executor::block_on(async {
-            let dbus = zbus::Connection::system().await?;
-
-            Ok(Self {
-                reporter,
-                dbus,
-            })
-        })
-    }
-
+    // TODO: actually watch for events
+    Ok(())
 }
 
