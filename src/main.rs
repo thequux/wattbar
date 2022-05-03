@@ -1,9 +1,12 @@
 
+pub mod upower;
+
 use std::{
     cell::RefCell,
     rc::Rc,
 };
 use std::cell::Cell;
+use std::sync::RwLock;
 use wayland_client::{Attached, Main, protocol::{
     wl_shm,
     wl_surface::WlSurface,
@@ -45,12 +48,22 @@ pub enum RenderEvent {
     }
 }
 
+pub struct PowerState {
+    /// Level, between 0 and 1
+    level: f32,
+    /// True if line power is available.
+    charging: bool,
+    /// Time to full charge/empty, in seconds
+    time_remaining: f32,
+}
+
 pub struct Surface {
     surface: WlSurface,
     layer_surface: Main<ZwlrLayerSurfaceV1>,
     next_render_event: Rc<Cell<Option<RenderEvent>>>,
     pool: AutoMemPool,
     dimensions: (u32, u32),
+    display_status: Arc<RwLock<>>
 }
 
 impl Surface {
