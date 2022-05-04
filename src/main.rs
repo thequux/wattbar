@@ -23,6 +23,7 @@ use smithay_client_toolkit::{
     default_environment, environment::SimpleGlobal, new_default_environment,
     output::with_output_info, output::OutputInfo, shm::AutoMemPool, WaylandSource,
 };
+use smithay_client_toolkit::output::Mode;
 
 #[derive(Copy, Clone, Debug)]
 pub struct PowerState {
@@ -58,9 +59,12 @@ pub enum RenderEvent {
 
 pub struct Surface {
     surface: WlSurface,
+    output: WlOutput,
     layer_surface: Main<ZwlrLayerSurfaceV1>,
     next_render_event: Rc<Cell<Option<RenderEvent>>>,
     pool: AutoMemPool,
+    mode: Option<Mode>,
+    scale: i32,
     dimensions: (u32, u32),
     display_status: Arc<RwLock<Option<PowerState>>>,
 }
@@ -71,7 +75,7 @@ impl Surface {
         surface: WlSurface,
         layer_shell: &Attached<ZwlrLayerShellV1>,
         pool: AutoMemPool,
-	state: &AppState,
+	    state: &AppState,
     ) -> Self {
         let layer_surface: Main<ZwlrLayerSurfaceV1> = layer_shell.get_layer_surface(
             &surface,
@@ -80,9 +84,8 @@ impl Surface {
             "WattBar".to_owned(),
         );
 
-        layer_surface.set_size(1900, 2);
+
         layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom);
-        layer_surface.set_exclusive_zone(2);
         let next_render_event = Rc::new(Cell::new(None));
         let nre_handle = Rc::clone(&next_render_event);
 
@@ -106,18 +109,41 @@ impl Surface {
             }
         });
 
-        surface.commit();
-        Surface {
+        let mut result = Surface {
             surface,
+            output: output.clone(),
             layer_surface,
             next_render_event,
+            mode: None,
+            scale: 1,
             pool,
             dimensions: (0, 0),
-	    display_status: Arc::clone(&state.display_status),
-        }
+            display_status: Arc::clone(&state.display_status),
+        };
+        result.resize();
+        result.surface.commit();
+
+        result
+    }
+
+    fn resize(&mut self) {
+        with_output_info(&self.output, |info| {
+            let mode = info.modes.iter().find(|mode| (*mode).is_current).cloned();
+            if self.mode.map(|mode| mode.dimensions) == mode.map(|mode| mode.dimensions) && self.scale == info.scale_factor {
+                return;
+            }
+            // eprintln!("Output {} mode: {:?}, scale: {}", info.name, mode, info.scale_factor);
+            if let Some(mode) = mode {
+                self.layer_surface.set_size((mode.dimensions.0 / info.scale_factor) as u32, 3);
+                self.layer_surface.set_exclusive_zone(3);
+                self.scale = info.scale_factor;
+            }
+        });
+
     }
 
     fn handle_events(&mut self) -> bool {
+        self.resize(); // There's probably a better way of doing this, but this isn't going to cost too much
         match self.next_render_event.take() {
             Some(RenderEvent::Closed) => true,
             Some(RenderEvent::Configure { width, height }) => {
@@ -161,8 +187,6 @@ impl Surface {
 
             (mix_color, state.level)
         } else {
-
-
             let color = Oklaba::from_color_unclamped(Srgba::new(0., 0.5, 1., 1.0f32));
             let pct = 0.5;
             (color, pct)
@@ -177,13 +201,13 @@ impl Surface {
 
         let fg_color = to_u32(base_color);
         let bg_color = to_u32(bg_color);
-        eprintln!("Colors: {:?}/{:?}", fg_color, bg_color);
+        // eprintln!("Colors: {:?}/{:?}", fg_color, bg_color);
 
         // let pct = pct * 0.75 + 0.125;
         // blit the buffer
         let fill_width = (width as f32 * pct) as usize * 4;
         for row in canvas.chunks_exact_mut(stride as usize) {
-            println!("Filling ..{}", fill_width);
+            // println!("Filling ..{}", fill_width);
             row[..fill_width].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(fg_color.as_slice()));
             row[fill_width..].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(bg_color.as_slice()));
         }
@@ -244,7 +268,7 @@ fn main() -> anyhow::Result<()> {
                 Surface::new(&output, surface, &layer_shell.clone(), pool, &app_state_handle),
             ));
 
-            output.
+            // output.
         }
     };
 
@@ -264,7 +288,7 @@ fn main() -> anyhow::Result<()> {
     event_loop.handle().insert_source(
         upower_channel,
         move |_, _, _| {
-            eprintln!("Power state: {:?}", &*power_state_handle.read().unwrap());
+            // eprintln!("Power state: {:?}", &*power_state_handle.read().unwrap());
             for (_, surface) in surfaces_handle.borrow_mut().iter() {
                 if surface.next_render_event.get().is_none() {
                     surface.next_render_event.set(Some(RenderEvent::DataChanged));
