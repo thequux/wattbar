@@ -74,7 +74,7 @@ impl Surface {
             "WattBar".to_owned(),
         );
 
-        layer_surface.set_size(32, 32);
+        layer_surface.set_size(1900, 3);
         layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom);
         layer_surface.set_exclusive_zone(3);
         let next_render_event = Rc::new(Cell::new(None));
@@ -130,6 +130,9 @@ impl Surface {
     }
 
     fn draw(&mut self) {
+        if self.dimensions.0 == 0 || self.dimensions.1 == 0 {
+            return;
+        }
         let stride = 4 * self.dimensions.0 as i32;
         let width = self.dimensions.0 as i32;
         let height = self.dimensions.1 as i32;
@@ -165,14 +168,14 @@ fn main() -> anyhow::Result<()> {
 
     // Spawn upower watcher
     let upower_channel = {
-	let (sender, channel) = calloop::channel::channel();
-	let reporter = upower::PowerReporter {
-	    sender,
-	    status: Arc::clone(&app_state.display_status),
-	};
+        let (sender, channel) = calloop::channel::channel();
+        let reporter = upower::PowerReporter {
+            sender,
+            status: Arc::clone(&app_state.display_status),
+        };
 
-	upower::spawn_upower(reporter)?;
-	channel
+        upower::spawn_upower(reporter)?;
+        channel
     };
     
     let (env, display, queue) =
@@ -215,16 +218,19 @@ fn main() -> anyhow::Result<()> {
     let mut event_loop = calloop::EventLoop::<()>::try_new().expect("Failed to start event loop");
 
     let surfaces_handle = Rc::clone(&surfaces);
+    let power_state_handle = Arc::clone(&app_state.display_status);
     event_loop.handle().insert_source(
-	upower_channel,
-	move |_, _, _| {
-	    for (_, surface) in surfaces_handle.borrow_mut().iter() {
-		if surface.next_render_event.get().is_none() {
-		    surface.next_render_event.set(Some(RenderEvent::DataChanged));
-		}
-	    }
-	}
+        upower_channel,
+        move |_, _, _| {
+            eprintln!("Power state: {:?}", &*power_state_handle.read().unwrap());
+            for (_, surface) in surfaces_handle.borrow_mut().iter() {
+                if surface.next_render_event.get().is_none() {
+                    surface.next_render_event.set(Some(RenderEvent::DataChanged));
+                }
+            }
+        }
     ).unwrap();
+
 
     WaylandSource::new(queue)
         .quick_insert(event_loop.handle())

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::PowerState;
 use std::sync::mpsc::SyncSender;
 use std::sync::{
@@ -7,7 +8,9 @@ use std::sync::{
 use upower_dbus;
 
 use calloop::channel::Sender as CalloopSender;
+use upower_dbus::BatteryState;
 use zbus;
+use zbus::zvariant::OwnedValue;
 
 pub struct PowerReporter {
     pub sender: CalloopSender<()>,
@@ -37,19 +40,67 @@ pub fn spawn_upower(reporter: PowerReporter) -> anyhow::Result<()> {
     start_receive.recv()?
 }
 
+fn upower_update(reporter: &PowerReporter, properties: &HashMap<String, OwnedValue>) {
+    {
+        let mut status = reporter.status.write().unwrap();
+        let battery_state = upower_dbus::BatteryState::try_from(properties["State"].clone()).unwrap();
+        let charging = match battery_state {
+            // fully enumerate the options in case a new one is added.
+            BatteryState::Charging |
+            BatteryState::FullyCharged |
+            BatteryState::PendingCharge => true,
+            BatteryState::Empty |
+            BatteryState::Discharging |
+            BatteryState::PendingDischarge |
+            BatteryState::Unknown => false,
+        };
+        *status = Some(PowerState {
+            level: f64::try_from(&properties["Percentage"]).unwrap() as f32 / 100.0,
+            charging,
+            time_remaining: if charging {
+                i64::try_from(&properties["TimeToFull"]).unwrap()
+            } else {
+                i64::try_from(&properties["TimeToEmpty"]).unwrap()
+            } as f32
+        })
+    }
+    // Notify listeners
+    reporter.sender.send(()).ok();
+}
+
 fn upower_run(
     reporter: PowerReporter,
     start_send: &SyncSender<anyhow::Result<()>>,
 ) -> anyhow::Result<()> {
     let dbus = zbus::blocking::Connection::system()?;
     let display_device_path = upower_dbus::UPowerProxyBlocking::new(&dbus)?.get_display_device()?;
-    let display_proxy = zbus::blocking::fdo::PropertiesProxy::builder(&dbus)
+    let display_proxy : zbus::blocking::fdo::PropertiesProxy = zbus::blocking::fdo::PropertiesProxy::builder(&dbus)
         .destination("org.freedesktop.UPower")?
         .path(display_device_path)?
         .cache_properties(zbus::CacheProperties::No)
         .build()?;
 
+    let mut prop_changed_iterator = display_proxy.receive_properties_changed()?;
+
+    let device_interface_name = zbus::names::InterfaceName::from_static_str("org.freedesktop.UPower.Device").unwrap();
+
+    let mut properties: HashMap<String, OwnedValue> = display_proxy.get_all(device_interface_name.clone())?;
+
+    upower_update(&reporter, &properties);
     start_send.send(Ok(())).unwrap();
+    for signal in prop_changed_iterator {
+        let args = signal.args().expect("Invalid signal arguments");
+        if args.interface_name != device_interface_name {
+            continue
+        }
+
+        for (name, value) in args.changed_properties {
+            properties.get_mut(name).map(|vp| *vp = value.into());
+        }
+        
+        // Update reporter
+        upower_update(&reporter, &properties);
+    }
 
     // TODO: actually watch for events
     Ok(())
