@@ -5,10 +5,8 @@ pub mod upower;
 use std::cell::Cell;
 use std::sync::RwLock;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
-use std::cmp::min;
-use std::os::linux::raw::stat;
 use palette::convert::FromColorUnclamped;
-use palette::{Blend, FromColor, IntoColor, LinSrgba, Mix, Oklab, Oklaba, Packed, Pixel, Shade, Srgb, Srgba};
+use palette::{FromColor, LinSrgba, Mix, Oklaba, Shade, Srgba};
 use wayland_client::{
     protocol::{wl_output::WlOutput, wl_shm, wl_surface::WlSurface},
     Attached, Main,
@@ -32,6 +30,7 @@ pub struct PowerState {
     /// True if line power is available.
     charging: bool,
     /// Time to full charge/empty, in seconds
+    #[allow(unused)] // TODO: actually use this to display the time remaining
     time_remaining: f32,
 }
 
@@ -227,7 +226,7 @@ impl Drop for Surface {
 
 fn main() -> anyhow::Result<()> {
 
-    let mut app_state = AppState::default();
+    let app_state = AppState::default();
 
     // Spawn upower watcher
     let upower_channel = {
@@ -284,7 +283,6 @@ fn main() -> anyhow::Result<()> {
     let mut event_loop = calloop::EventLoop::<()>::try_new().expect("Failed to start event loop");
 
     let surfaces_handle = Rc::clone(&surfaces);
-    let power_state_handle = Arc::clone(&app_state.display_status);
     event_loop.handle().insert_source(
         upower_channel,
         move |_, _, _| {

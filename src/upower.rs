@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use crate::PowerState;
 use std::sync::mpsc::SyncSender;
 use std::sync::{
-    mpsc::{Receiver, Sender},
     Arc, RwLock,
 };
 use upower_dbus;
@@ -15,17 +14,6 @@ use zbus::zvariant::OwnedValue;
 pub struct PowerReporter {
     pub sender: CalloopSender<()>,
     pub status: Arc<RwLock<Option<PowerState>>>,
-}
-
-pub struct PowerReceiver {
-    receiver: Receiver<()>,
-    status: Arc<RwLock<Option<PowerState>>>,
-}
-
-macro_rules! catch {
-    ($expr:block) => {
-        (|| $expr)()
-    };
 }
 
 pub fn spawn_mock(reporter: PowerReporter) -> anyhow::Result<()> {
@@ -54,7 +42,7 @@ pub fn spawn_upower(reporter: PowerReporter) -> anyhow::Result<()> {
     std::thread::spawn(move || {
         let failure = upower_run(reporter, &start_send);
         if failure.is_err() {
-            start_send.send(failure);
+            start_send.send(failure).unwrap();
         }
     });
 
@@ -101,7 +89,7 @@ fn upower_run(
         .cache_properties(zbus::CacheProperties::No)
         .build()?;
 
-    let mut prop_changed_iterator = display_proxy.receive_properties_changed()?;
+    let prop_changed_iterator = display_proxy.receive_properties_changed()?;
 
     let device_interface_name = zbus::names::InterfaceName::from_static_str("org.freedesktop.UPower.Device").unwrap();
 
