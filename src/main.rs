@@ -1,8 +1,14 @@
+extern crate core;
+
 pub mod upower;
 
 use std::cell::Cell;
 use std::sync::RwLock;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::cmp::min;
+use std::os::linux::raw::stat;
+use palette::convert::FromColorUnclamped;
+use palette::{Blend, FromColor, IntoColor, LinSrgba, Mix, Oklab, Oklaba, Packed, Pixel, Shade, Srgb, Srgba};
 use wayland_client::{
     protocol::{wl_output::WlOutput, wl_shm, wl_surface::WlSurface},
     Attached, Main,
@@ -74,9 +80,9 @@ impl Surface {
             "WattBar".to_owned(),
         );
 
-        layer_surface.set_size(1900, 3);
+        layer_surface.set_size(1900, 2);
         layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::Bottom);
-        layer_surface.set_exclusive_zone(3);
+        layer_surface.set_exclusive_zone(2);
         let next_render_event = Rc::new(Cell::new(None));
         let nre_handle = Rc::clone(&next_render_event);
 
@@ -141,12 +147,45 @@ impl Surface {
             .pool
             .buffer(width, height, stride, wl_shm::Format::Argb8888)
             .unwrap();
-        for dst_pixel in canvas.chunks_exact_mut(4) {
-            let pixel = 0x01_00_8f_00u32.to_ne_bytes();
-            dst_pixel[0] = pixel[0];
-            dst_pixel[1] = pixel[1];
-            dst_pixel[2] = pixel[2];
-            dst_pixel[3] = pixel[3];
+
+        let state = self.display_status.read().map_or(None, |lock| lock.clone());
+
+        let (base_color, pct) = if let Some(state) = state {
+            let mix_color = if !state.charging {
+                let min_color = Oklaba::from_color_unclamped(palette::LinSrgba::new(1., 0., 0., 1.));
+                let max_color = Oklaba::from_color_unclamped(palette::LinSrgba::new(0., 1., 0., 1.));
+                min_color.mix(&max_color, state.level)
+            } else {
+                Oklaba::from_color_unclamped(Srgba::new(0., 0.5, 1., 1.0f32))
+            };
+
+            (mix_color, state.level)
+        } else {
+
+
+            let color = Oklaba::from_color_unclamped(Srgba::new(0., 0.5, 1., 1.0f32));
+            let pct = 0.5;
+            (color, pct)
+        };
+
+        let bg_color = base_color.darken(0.5);
+
+        let to_u32 = |color| {
+            LinSrgba::from_color(color).into_encoding::<palette::encoding::Srgb>().into_format::<u8,u8>().into_u32::<palette::rgb::channels::Argb>().to_le_bytes()
+        } ;
+
+
+        let fg_color = to_u32(base_color);
+        let bg_color = to_u32(bg_color);
+        eprintln!("Colors: {:?}/{:?}", fg_color, bg_color);
+
+        // let pct = pct * 0.75 + 0.125;
+        // blit the buffer
+        let fill_width = (width as f32 * pct) as usize * 4;
+        for row in canvas.chunks_exact_mut(stride as usize) {
+            println!("Filling ..{}", fill_width);
+            row[..fill_width].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(fg_color.as_slice()));
+            row[fill_width..].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(bg_color.as_slice()));
         }
 
         self.surface.attach(Some(&buffer), 0, 0);

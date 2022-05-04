@@ -15,3 +15,5 @@ calloop = "0.9.3"
 zbus = "2.2.0"
 upower_dbus = { version = "0.2.0" }
 futures = { version = "0.3.21", features = ["executor"] }
+
+palette = "0.6.0"
