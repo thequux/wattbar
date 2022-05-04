@@ -1,5 +1,11 @@
 [package]
 name = "wattbar"
+authors = [ "TQ Hirsch <thequux@thequux.com>" ]
+description = "Simple battery status display"
+homepage = "https://github.com/thequux/wattbar"
+repository = "https://github.com/thequux/wattbar"
+
+license = "MIT"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,6 +20,5 @@ calloop = "0.9.3"
 
 zbus = "2.2.0"
 upower_dbus = { version = "0.2.0" }
-futures = { version = "0.3.21", features = ["executor"] }
 
 palette = "0.6.0"
