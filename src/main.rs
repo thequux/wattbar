@@ -214,6 +214,7 @@ fn main() -> anyhow::Result<()> {
         };
 
         upower::spawn_upower(reporter)?;
+        // upower::spawn_mock(reporter)?;
         channel
     };
     
@@ -242,6 +243,8 @@ fn main() -> anyhow::Result<()> {
                 info.id,
                 Surface::new(&output, surface, &layer_shell.clone(), pool, &app_state_handle),
             ));
+
+            output.
         }
     };
 

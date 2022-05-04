@@ -28,6 +28,27 @@ macro_rules! catch {
     };
 }
 
+pub fn spawn_mock(reporter: PowerReporter) -> anyhow::Result<()> {
+    std::thread::spawn(move || {
+        *reporter.status.write().unwrap() = Some(PowerState{
+            level: 0.0,
+            charging: false,
+            time_remaining: 0.0,
+        });
+        let mut fill = 0u32;
+       loop {
+           std::thread::sleep(std::time::Duration::from_millis(10));
+           {
+               let mut lock = reporter.status.write().unwrap();
+               fill = (fill + 1) & 0x1FF;
+               lock.as_mut().unwrap().level = (fill as f32) / 512.0f32;
+           };
+           reporter.sender.send(()).unwrap();
+       }
+    });
+    Ok(())
+}
+
 pub fn spawn_upower(reporter: PowerReporter) -> anyhow::Result<()> {
     let (start_send, start_receive) = std::sync::mpsc::sync_channel(1);
     std::thread::spawn(move || {
