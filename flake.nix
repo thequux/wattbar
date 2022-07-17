@@ -14,10 +14,24 @@
         inherit system;
         overlays = [ cargo2nix.overlays.default ];
       };
+
+      overrides = [
+        (pkgs.rustBuilder.rustLib.makeOverride {
+          name = "smithay-client-toolkit";
+          overrideAttrs = attrs: {
+            buildInputs = (attrs.buildInputs or []) ++ [
+              pkgs.libxkbcommon
+            ];
+          };
+        })
+      ] ++ pkgs.rustBuilder.overrides.all;
+
       rustPkgs = pkgs.rustBuilder.makePackageSet {
         rustVersion = "1.61.0";
         packageFun = import ./Cargo.nix;
+        packageOverrides = pkgs: overrides;
       };
+
     in rec {
       packages = {
         wattbar = (rustPkgs.workspace.wattbar {}).bin;
