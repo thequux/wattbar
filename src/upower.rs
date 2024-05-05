@@ -25,12 +25,13 @@ pub fn spawn_mock(reporter: PowerReporter) -> anyhow::Result<()> {
         });
         let mut fill = 0u32;
        loop {
-           std::thread::sleep(std::time::Duration::from_millis(10));
+           std::thread::sleep(std::time::Duration::from_millis(200));
            {
                let mut lock = reporter.status.write().unwrap();
-               fill = (fill + 1) & 0x1FF;
+               fill = (fill + 1) % 100;
                lock.as_mut().unwrap().level = (fill as f32) / 512.0f32;
            };
+           eprintln!("Sending report");
            reporter.sender.send(()).unwrap();
        }
     });
