@@ -110,6 +110,8 @@ pub struct CliOptions {
     border: Side,
     #[arg(short, long, default_value_t = 3)]
     size: u32,
+    #[arg(long,hide = true)]
+    mock_upower: bool,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -354,33 +356,25 @@ impl OutputHandler for AppState {
         surface.layer_surface.set_buffer_scale(info.scale_factor as u32).unwrap();
         surface.scale = info.scale_factor;
         surface.current_scale = surface.scale;
-        // eprintln!("Got size: {}x{} x{}", w, h, surface.scale);
         surface.layer_surface.set_size(w as u32 / info.scale_factor as u32,h as u32 / info.scale_factor as u32);
         surface.layer_surface.set_exclusive_zone(self.cli.size as i32);
-        // eprintln!("Committing layer surface");
         surface.layer_surface.commit();
-        // surface.schedule_event(RenderEvent::Configure {
-        //     size: Some((w as u32, h as u32)),
-        //     scale: Some(info.scale_factor),
-        // });
         _conn.flush().unwrap();
-        // surface.layer_surface.commit();
         self.surfaces.insert(output.id(), surface);
     }
 
     fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
-        // let info = self.output_state.info(&output).expect("No info for new output");
-        // let mode = info.modes.iter().find(|mode| mode.current).expect("Output should have a mode");
-        // let (x,y,w,h) = self.cli.border.compute_size(self.cli.size as i32 * info.scale_factor, mode.dimensions);
-        // eprintln!("update_output: {:?}", (w,h));
-        //
-        // if let Some(surface) = self.surfaces.get_mut(&output.id()) {
-        //     surface.schedule_event(RenderEvent::Configure {
-        //         size: Some((w as u32, h as u32)),
-        //         scale: Some(info.scale_factor),
-        //     })
-        //
-        // }
+        if let Some(surface) = self.surfaces.get_mut(&output.id()) {
+            let info = self.output_state.info(&output).expect("No info for new output");
+            let mode = info.modes.iter().find(|mode| mode.current).expect("Output should have a mode");
+            let (_x, _y, w, h) = self.cli.border.compute_size(self.cli.size as i32 * info.scale_factor, mode.dimensions);
+
+            if surface.layer_surface.set_buffer_scale(info.scale_factor as u32).is_ok() {
+                surface.scale = info.scale_factor;
+            }
+            surface.current_scale = surface.scale;
+            surface.layer_surface.set_size(w as u32 / surface.scale as u32, h as u32 / surface.scale as u32);
+        }
     }
 
     fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
@@ -410,7 +404,7 @@ impl LayerShellHandler for AppState {
     }
 
     fn configure(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface, configure: LayerSurfaceConfigure, _serial: u32) {
-        // eprintln!("Received configure event for {}: {:?}", layer.wl_surface().id(), configure);
+        eprintln!("Received configure event for {}: {:?}", layer.wl_surface().id(), configure);
         _conn.flush().unwrap();
         let bar = self.surfaces.values_mut()
             .find_map(|surface| (&surface.layer_surface == layer).then_some(surface));
@@ -454,7 +448,7 @@ impl CompositorHandler for AppState {
 
 
 fn main() -> anyhow::Result<()> {
-    let cli = CliOptions::parse();
+    let cli: CliOptions = CliOptions::parse();
     let display_status = Arc::new(Default::default());
 
     // Spawn upower watcher
@@ -465,8 +459,11 @@ fn main() -> anyhow::Result<()> {
             status: Arc::clone(&display_status),
         };
 
-        upower::spawn_upower(reporter)?;
-        // upower::spawn_mock(reporter)?;
+        if cli.mock_upower {
+            upower::spawn_mock(reporter)?;
+        } else {
+            upower::spawn_upower(reporter)?;
+        }
         channel
     };
 
