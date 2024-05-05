@@ -106,10 +106,17 @@ impl FromStr for Side {
 #[derive(clap::Parser, Debug)]
 #[clap(version, about, long_about=None)]
 pub struct CliOptions {
+    /// Which border to draw the bar on. One of left, right, top, or bottom (or l,r,t, or b)
     #[arg(short, long, default_value = "bottom")]
     border: Side,
+    /// How many virtual pixels tall the bar should be
     #[arg(short, long, default_value_t = 3)]
     size: u32,
+    /// Reverse the direction of the bar (i.e., right-to-left, or top-to-bottom)
+    #[arg(short, long)]
+    reverse: bool,
+
+    /// Debugging aid to simply animate the bar.
     #[arg(long,hide = true)]
     mock_upower: bool,
 }
@@ -149,6 +156,7 @@ pub struct BarSurface {
     layer_surface: LayerSurface,
     next_render_event: Option<RenderEvent>,
     side: Side,
+    reverse: bool,
     mode: Option<Mode>,
     scale: i32,
     dimensions: (u32, u32), // in raw pixels
@@ -179,6 +187,7 @@ impl BarSurface {
             scale: 1,
             pool,
             side,
+            reverse: state.cli.reverse,
             dimensions: (0, 0),
             current_dimensions: (0,0),
             current_scale: 1,
@@ -290,6 +299,7 @@ impl BarSurface {
             (color, pct)
         };
 
+
         let bg_color = base_color.darken(0.5);
 
         let to_u32 = |color| {
@@ -299,17 +309,30 @@ impl BarSurface {
 
         let fg_color = to_u32(base_color);
         let bg_color = to_u32(bg_color);
+
+        let (pct, fg_color, bg_color) = if self.reverse {
+            (1. - pct, bg_color, fg_color)
+        } else {
+            (pct, fg_color, bg_color)
+        };
+
         // eprintln!("Colors: {:?}/{:?}", fg_color, bg_color);
 
         // TODO: fix this to support vertical mode
 
-        // let pct = pct * 0.75 + 0.125;
-        // blit the buffer
-        let fill_width = (width as f32 * pct) as usize * 4;
-        for row in canvas.chunks_exact_mut(stride as usize) {
-            // println!("Filling ..{}", fill_width);
-            row[..fill_width].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(fg_color.as_slice()));
-            row[fill_width..].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(bg_color.as_slice()));
+        if self.side.is_horizontal() {
+            let fill_width = (width as f32 * pct) as usize * 4;
+            for row in canvas.chunks_exact_mut(stride as usize) {
+                // println!("Filling ..{}", fill_width);
+                row[..fill_width].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(fg_color.as_slice()));
+                row[fill_width..].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(bg_color.as_slice()));
+            }
+        } else {
+            let fill_height = ((height as f32 * (1. - pct)) as usize).clamp(0, height as usize-1);
+            let (bg_part, fg_part) = canvas.split_at_mut(stride as usize * fill_height);
+            debug_assert!(bg_part.len() % stride as usize == 0, "vertical split was not an integer number of rows");
+            bg_part.chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(bg_color.as_slice()));
+            fg_part.chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(fg_color.as_slice()));
         }
 
         surface.attach(Some(buffer.wl_buffer()), 0, 0);
