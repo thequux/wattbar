@@ -17,8 +17,7 @@ wayland-protocols = "0.29"
 anyhow = "1"
 smithay-client-toolkit = { version = "0.15", default-features = false, features = ["calloop"] }
 calloop = "0.9.3"
-
-zbus = "2.2.0"
-upower_dbus = { version = "0.2.0" }
+zbus = "3.7"
+upower_dbus = "0.3.0"
 
 palette = "0.6.0"

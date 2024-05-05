@@ -82,10 +82,10 @@ fn upower_run(
     start_send: &SyncSender<anyhow::Result<()>>,
 ) -> anyhow::Result<()> {
     let dbus = zbus::blocking::Connection::system()?;
-    let display_device_path = upower_dbus::UPowerProxyBlocking::new(&dbus)?.get_display_device()?;
+    let display_device = upower_dbus::UPowerProxyBlocking::new(&dbus)?.get_display_device()?;
     let display_proxy : zbus::blocking::fdo::PropertiesProxy = zbus::blocking::fdo::PropertiesProxy::builder(&dbus)
         .destination("org.freedesktop.UPower")?
-        .path(display_device_path)?
+        .path(display_device.path())?
         .cache_properties(zbus::CacheProperties::No)
         .build()?;
 
