@@ -7,9 +7,7 @@ use std::sync::RwLock;
 
 use anyhow::bail;
 use clap::Parser;
-use palette::{
-    convert::FromColorUnclamped, FromColor, IntoColor, LinSrgba, Mix, Oklaba, Shade, Srgba,
-};
+use palette::{convert::FromColorUnclamped, FromColor, Mix, Shade};
 use smithay_client_toolkit::{
     compositor::CompositorHandler,
     compositor::CompositorState,
@@ -183,7 +181,7 @@ pub struct BarSurface {
 
 impl BarSurface {
     fn new(
-        output: &WlOutput,
+        _output: &WlOutput,
         layer_surface: LayerSurface,
         pool: SlotPool,
         state: &AppState,
@@ -273,7 +271,6 @@ impl BarSurface {
                     size: size.or(osize),
                     scale: scale.or(oscale),
                 });
-                // eprintln!("Setting render event to {:?}", self.next_render_event)
             }
             (_, RenderEvent::Configure { .. }) => self.next_render_event = Some(event),
             (Some(RenderEvent::Configure { .. }), _) => {}
@@ -283,54 +280,47 @@ impl BarSurface {
         }
     }
 
-    fn draw(&mut self) {
-        self.resize();
-        let surface = self.layer_surface.wl_surface();
-        if self.dimensions.0 == 0 || self.dimensions.1 == 0 {
-            return;
-        }
-        let width = self.current_dimensions.0 as i32 * self.scale;
-        let height = self.current_dimensions.1 as i32 * self.scale;
-        let stride = 4 * width;
-
-        let (buffer, canvas) = self
-            .pool
-            .create_buffer(width, height, stride, wl_shm::Format::Argb8888)
-            .unwrap();
-        // eprintln!("Allocating buffer: {width}x{height}+{stride} -> {:?}", buffer.slot());
-
-        let state = self.display_status.read().map_or(None, |lock| lock.clone());
-
-        let (base_color, pct) = if let Some(state) = state {
-            let mix_color = if !state.charging {
-                let min_color =
-                    Oklaba::from_color_unclamped(palette::LinSrgba::new(1., 0., 0., 1.));
-                let max_color =
-                    Oklaba::from_color_unclamped(palette::LinSrgba::new(0., 1., 0., 1.));
-                min_color.mix(&max_color, state.level)
-            } else {
-                Oklaba::from_color_unclamped(Srgba::new(0., 0.5, 1., 1.0f32))
-            };
-
-            (mix_color, state.level)
+    // Returns fg, bg
+    fn compute_color(&self, charging: bool, level: f32) -> ([u8; 4], [u8; 4]) {
+        let fg_color = if !charging {
+            let min_color = palette::Oklab::from_color_unclamped(palette::LinSrgb::new(1., 0., 0.));
+            let max_color = palette::Oklab::from_color_unclamped(palette::LinSrgb::new(0., 1., 0.));
+            min_color.mix(&max_color, level)
         } else {
-            let color = Oklaba::from_color_unclamped(Srgba::new(0., 0.5, 1., 1.0f32));
-            let pct = 0.5;
-            (color, pct)
+            palette::Oklab::from_color_unclamped(palette::Srgb::new(0., 0.5, 1.))
         };
 
-        let bg_color = base_color.darken(0.5);
+        let bg_color = fg_color.darken(0.5);
 
         let to_u32 = |color| {
-            LinSrgba::from_color(color)
+            palette::LinSrgba::from_color(color)
                 .into_encoding::<palette::encoding::Srgb>()
                 .into_format::<u8, u8>()
                 .into_u32::<palette::rgb::channels::Argb>()
                 .to_le_bytes()
         };
 
-        let fg_color = to_u32(base_color);
+        let fg_color = to_u32(fg_color);
         let bg_color = to_u32(bg_color);
+        (fg_color, bg_color)
+    }
+
+    fn draw(&mut self) {
+        self.resize();
+        let surface = self.layer_surface.wl_surface();
+        if self.dimensions.0 == 0 || self.dimensions.1 == 0 {
+            return;
+        }
+
+        let state = self.display_status.read().map_or(None, |lock| lock.clone());
+
+        let (charging, pct) = if let Some(state) = state {
+            (state.charging, state.level)
+        } else {
+            (true, 0.5)
+        };
+
+        let (fg_color, bg_color) = self.compute_color(charging, pct);
 
         let (pct, fg_color, bg_color) = if self.reverse {
             (1. - pct, bg_color, fg_color)
@@ -338,9 +328,13 @@ impl BarSurface {
             (pct, fg_color, bg_color)
         };
 
-        // eprintln!("Colors: {:?}/{:?}", fg_color, bg_color);
-
-        // TODO: fix this to support vertical mode
+        let width = self.current_dimensions.0 as i32 * self.scale;
+        let height = self.current_dimensions.1 as i32 * self.scale;
+        let stride = 4 * width;
+        let (buffer, canvas) = self
+            .pool
+            .create_buffer(width, height, stride, wl_shm::Format::Argb8888)
+            .unwrap();
 
         if self.side.is_horizontal() {
             let fill_width = (width as f32 * pct) as usize * 4;
