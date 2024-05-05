@@ -1,34 +1,43 @@
 extern crate core;
 
-pub mod upower;
-
-use std::cell::Cell;
-use std::sync::RwLock;
-use std::{rc::Rc, sync::Arc};
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
+use std::sync::RwLock;
+
 use anyhow::bail;
 use clap::Parser;
-use palette::convert::FromColorUnclamped;
-use palette::{FromColor, IntoColor, LinSrgba, Mix, Oklaba, Shade, Srgba};
-use wayland_client::{Connection, protocol::{wl_output::WlOutput, wl_shm, wl_surface::WlSurface}, Proxy, QueueHandle};
-
-use wayland_protocols_wlr::layer_shell::v1::client::{
-    zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
+use palette::{
+    convert::FromColorUnclamped, FromColor, IntoColor, LinSrgba, Mix, Oklaba, Shade, Srgba,
+};
+use smithay_client_toolkit::{
+    compositor::CompositorHandler,
+    compositor::CompositorState,
+    delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
+    output::{OutputHandler, OutputState},
+    reexports::{calloop::EventLoop, calloop_wayland_source::WaylandSource},
+    registry::{ProvidesRegistryState, RegistryState},
+    registry_handlers,
+    shell::{
+        wlr_layer::{
+            Anchor, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
+        },
+        WaylandSurface,
+    },
+    shm::{slot::SlotPool, Shm, ShmHandler},
+};
+use wayland_client::{
+    backend::ObjectId,
+    globals::registry_queue_init,
+    protocol::{
+        wl_output::{Transform, WlOutput},
+        wl_shm,
+        wl_surface::WlSurface,
+    },
+    Connection, Proxy, QueueHandle,
 };
 
-use smithay_client_toolkit::{shell::wlr_layer::LayerShell, reexports::calloop_wayland_source::WaylandSource, output::{Mode, OutputState}, compositor::CompositorState, shm::Shm, delegate_compositor, delegate_output, delegate_shm, delegate_layer, delegate_registry, registry_handlers};
-use smithay_client_toolkit::compositor::CompositorHandler;
-use smithay_client_toolkit::output::OutputHandler;
-use smithay_client_toolkit::reexports::calloop::EventLoop;
-use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryState};
-use smithay_client_toolkit::shell::WaylandSurface;
-use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerShellHandler, LayerSurface, LayerSurfaceConfigure};
-use smithay_client_toolkit::shm::ShmHandler;
-use smithay_client_toolkit::shm::slot::SlotPool;
-use wayland_client::backend::ObjectId;
-use wayland_client::globals::registry_queue_init;
-use wayland_client::protocol::wl_output::Transform;
+pub mod upower;
 
 #[derive(Copy, Clone, Debug)]
 enum Side {
@@ -39,7 +48,9 @@ enum Side {
 }
 
 impl Default for Side {
-    fn default() -> Self { Self::Bottom }
+    fn default() -> Self {
+        Self::Bottom
+    }
 }
 
 impl Side {
@@ -50,15 +61,16 @@ impl Side {
         }
     }
 
-    fn compute_size(self, size: i32, (w,h): (i32, i32)) -> (i32, i32, i32, i32) {
+    fn compute_size(self, size: i32, (w, h): (i32, i32)) -> (i32, i32, i32, i32) {
         match self {
             Side::Top => (0, 0, w, size),
-            Side::Bottom => (0, h-size, w, size),
+            Side::Bottom => (0, h - size, w, size),
             Side::Left => (0, 0, size, h),
-            Side::Right => (w-size, 0, size, h),
+            Side::Right => (w - size, 0, size, h),
         }
     }
 
+    #[allow(unused)]
     fn ccw(self) -> Self {
         match self {
             Side::Top => Side::Left,
@@ -68,6 +80,7 @@ impl Side {
         }
     }
 
+    #[allow(unused)]
     fn cw(self) -> Self {
         match self {
             Side::Top => Side::Right,
@@ -94,17 +107,17 @@ impl FromStr for Side {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "b"| "bottom" => Ok(Self::Bottom),
-            "t"|"top" => Ok(Self::Top),
-            "l"|"left" => Ok(Self::Left),
-            "r"|"right" => Ok(Self::Right),
-            _ => bail!("Invalid side. Expected left, right, top, or bottom (or one of l,r,t,b)")
+            "b" | "bottom" => Ok(Self::Bottom),
+            "t" | "top" => Ok(Self::Top),
+            "l" | "left" => Ok(Self::Left),
+            "r" | "right" => Ok(Self::Right),
+            _ => bail!("Invalid side. Expected left, right, top, or bottom (or one of l,r,t,b)"),
         }
     }
 }
 
 #[derive(clap::Parser, Debug)]
-#[clap(version, about, long_about=None)]
+#[clap(version, about, long_about = None)]
 pub struct CliOptions {
     /// Which border to draw the bar on. One of left, right, top, or bottom (or l,r,t, or b)
     #[arg(short, long, default_value = "bottom")]
@@ -117,7 +130,7 @@ pub struct CliOptions {
     reverse: bool,
 
     /// Debugging aid to simply animate the bar.
-    #[arg(long,hide = true)]
+    #[arg(long, hide = true)]
     mock_upower: bool,
 }
 
@@ -147,17 +160,18 @@ pub struct AppState {
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum RenderEvent {
     Closed,
-    Configure { size: Option<(u32, u32)>, scale: Option<i32>, },
+    Configure {
+        size: Option<(u32, u32)>,
+        scale: Option<i32>,
+    },
     DataChanged,
 }
 
 pub struct BarSurface {
-    output: WlOutput,
     layer_surface: LayerSurface,
     next_render_event: Option<RenderEvent>,
     side: Side,
     reverse: bool,
-    mode: Option<Mode>,
     scale: i32,
     dimensions: (u32, u32), // in raw pixels
 
@@ -172,24 +186,22 @@ impl BarSurface {
         output: &WlOutput,
         layer_surface: LayerSurface,
         pool: SlotPool,
-	    state: &AppState,
+        state: &AppState,
     ) -> Self {
         let side = state.cli.border;
         // layer_surface.set_anchor(Anchor::from(side) | Anchor::from(side.ccw()) | side.cw().into());
         layer_surface.set_anchor(Anchor::from(side));
         let next_render_event = None;
 
-        let mut result = BarSurface {
-            output: output.clone(),
+        let result = BarSurface {
             layer_surface,
             next_render_event,
-            mode: None,
             scale: 1,
             pool,
             side,
             reverse: state.cli.reverse,
             dimensions: (0, 0),
-            current_dimensions: (0,0),
+            current_dimensions: (0, 0),
             current_scale: 1,
             display_status: Arc::clone(&state.display_status),
         };
@@ -226,11 +238,16 @@ impl BarSurface {
             return false; // nothing to change
         }
         // eprintln!("Setting size to {:?}", self.dimensions);
-        if self.layer_surface.set_buffer_scale(self.scale as u32).is_err() {
+        if self
+            .layer_surface
+            .set_buffer_scale(self.scale as u32)
+            .is_err()
+        {
             self.scale = self.current_scale;
         }
         if self.dimensions != self.current_dimensions {
-            self.layer_surface.set_size(self.dimensions.0, self.dimensions.1);
+            self.layer_surface
+                .set_size(self.dimensions.0, self.dimensions.1);
         }
         // eprintln!("Committing layer surface {}", self.layer_surface.wl_surface().id());
         self.layer_surface.commit();
@@ -243,25 +260,26 @@ impl BarSurface {
 
     fn schedule_event(&mut self, event: RenderEvent) {
         match (self.next_render_event, event) {
-            (_, RenderEvent::Closed) =>
-                self.next_render_event = Some(RenderEvent::Closed),
+            (_, RenderEvent::Closed) => self.next_render_event = Some(RenderEvent::Closed),
             (Some(RenderEvent::Closed), _) => {}
             (
-                Some(RenderEvent::Configure {size: osize, scale: oscale}),
-                RenderEvent::Configure {size, scale}
+                Some(RenderEvent::Configure {
+                    size: osize,
+                    scale: oscale,
+                }),
+                RenderEvent::Configure { size, scale },
             ) => {
                 self.next_render_event = Some(RenderEvent::Configure {
                     size: size.or(osize),
-                    scale: scale.or(oscale)
+                    scale: scale.or(oscale),
                 });
                 // eprintln!("Setting render event to {:?}", self.next_render_event)
             }
-            (_, RenderEvent::Configure {..}) =>
-                self.next_render_event = Some(event),
-            (Some(RenderEvent::Configure {..}), _) => {},
-            (_, RenderEvent::DataChanged) =>
-                self.next_render_event = Some(RenderEvent::DataChanged),
-
+            (_, RenderEvent::Configure { .. }) => self.next_render_event = Some(event),
+            (Some(RenderEvent::Configure { .. }), _) => {}
+            (_, RenderEvent::DataChanged) => {
+                self.next_render_event = Some(RenderEvent::DataChanged)
+            }
         }
     }
 
@@ -285,8 +303,10 @@ impl BarSurface {
 
         let (base_color, pct) = if let Some(state) = state {
             let mix_color = if !state.charging {
-                let min_color = Oklaba::from_color_unclamped(palette::LinSrgba::new(1., 0., 0., 1.));
-                let max_color = Oklaba::from_color_unclamped(palette::LinSrgba::new(0., 1., 0., 1.));
+                let min_color =
+                    Oklaba::from_color_unclamped(palette::LinSrgba::new(1., 0., 0., 1.));
+                let max_color =
+                    Oklaba::from_color_unclamped(palette::LinSrgba::new(0., 1., 0., 1.));
                 min_color.mix(&max_color, state.level)
             } else {
                 Oklaba::from_color_unclamped(Srgba::new(0., 0.5, 1., 1.0f32))
@@ -299,13 +319,15 @@ impl BarSurface {
             (color, pct)
         };
 
-
         let bg_color = base_color.darken(0.5);
 
         let to_u32 = |color| {
-            LinSrgba::from_color(color).into_encoding::<palette::encoding::Srgb>().into_format::<u8,u8>().into_u32::<palette::rgb::channels::Argb>().to_le_bytes()
-        } ;
-
+            LinSrgba::from_color(color)
+                .into_encoding::<palette::encoding::Srgb>()
+                .into_format::<u8, u8>()
+                .into_u32::<palette::rgb::channels::Argb>()
+                .to_le_bytes()
+        };
 
         let fg_color = to_u32(base_color);
         let bg_color = to_u32(bg_color);
@@ -324,15 +346,26 @@ impl BarSurface {
             let fill_width = (width as f32 * pct) as usize * 4;
             for row in canvas.chunks_exact_mut(stride as usize) {
                 // println!("Filling ..{}", fill_width);
-                row[..fill_width].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(fg_color.as_slice()));
-                row[fill_width..].chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(bg_color.as_slice()));
+                row[..fill_width]
+                    .chunks_exact_mut(4)
+                    .for_each(|chunk| chunk.copy_from_slice(fg_color.as_slice()));
+                row[fill_width..]
+                    .chunks_exact_mut(4)
+                    .for_each(|chunk| chunk.copy_from_slice(bg_color.as_slice()));
             }
         } else {
-            let fill_height = ((height as f32 * (1. - pct)) as usize).clamp(0, height as usize-1);
+            let fill_height = ((height as f32 * (1. - pct)) as usize).clamp(0, height as usize - 1);
             let (bg_part, fg_part) = canvas.split_at_mut(stride as usize * fill_height);
-            debug_assert!(bg_part.len() % stride as usize == 0, "vertical split was not an integer number of rows");
-            bg_part.chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(bg_color.as_slice()));
-            fg_part.chunks_exact_mut(4).for_each(|chunk| chunk.copy_from_slice(fg_color.as_slice()));
+            debug_assert!(
+                bg_part.len() % stride as usize == 0,
+                "vertical split was not an integer number of rows"
+            );
+            bg_part
+                .chunks_exact_mut(4)
+                .for_each(|chunk| chunk.copy_from_slice(bg_color.as_slice()));
+            fg_part
+                .chunks_exact_mut(4)
+                .for_each(|chunk| chunk.copy_from_slice(fg_color.as_slice()));
         }
 
         surface.attach(Some(buffer.wl_buffer()), 0, 0);
@@ -355,9 +388,19 @@ impl OutputHandler for AppState {
 
     fn new_output(&mut self, _conn: &Connection, qh: &QueueHandle<Self>, output: WlOutput) {
         let surface = self.compositor.create_surface(qh);
-        let info = self.output_state.info(&output).expect("No info for new output");
-        let mode = info.modes.iter().find(|mode| mode.current).expect("Output should have a mode");
-        let (_x,_y,w,h) = self.cli.border.compute_size(self.cli.size as i32 * info.scale_factor, mode.dimensions);
+        let info = self
+            .output_state
+            .info(&output)
+            .expect("No info for new output");
+        let mode = info
+            .modes
+            .iter()
+            .find(|mode| mode.current)
+            .expect("Output should have a mode");
+        let (_x, _y, w, h) = self
+            .cli
+            .border
+            .compute_size(self.cli.size as i32 * info.scale_factor, mode.dimensions);
         let buf_sz = (w * h * 4) as usize;
         let pool = SlotPool::new(buf_sz, &self.shm).expect("Failed to create a backing store");
         let layer_surface = self.layer_shell.create_layer_surface(
@@ -365,22 +408,25 @@ impl OutputHandler for AppState {
             surface,
             Layer::Bottom,
             Some("WattBar"),
-            Some(&output)
+            Some(&output),
         );
 
         // eprintln!("Allocated surface {} on {}", layer_surface.wl_surface().id(), output.id());
 
-        let mut surface = BarSurface::new(
-            &output,
-            layer_surface,
-            pool,
-            &self,
-        );
-        surface.layer_surface.set_buffer_scale(info.scale_factor as u32).unwrap();
+        let mut surface = BarSurface::new(&output, layer_surface, pool, &self);
+        surface
+            .layer_surface
+            .set_buffer_scale(info.scale_factor as u32)
+            .unwrap();
         surface.scale = info.scale_factor;
         surface.current_scale = surface.scale;
-        surface.layer_surface.set_size(w as u32 / info.scale_factor as u32,h as u32 / info.scale_factor as u32);
-        surface.layer_surface.set_exclusive_zone(self.cli.size as i32);
+        surface.layer_surface.set_size(
+            w as u32 / info.scale_factor as u32,
+            h as u32 / info.scale_factor as u32,
+        );
+        surface
+            .layer_surface
+            .set_exclusive_zone(self.cli.size as i32);
         surface.layer_surface.commit();
         _conn.flush().unwrap();
         self.surfaces.insert(output.id(), surface);
@@ -388,15 +434,32 @@ impl OutputHandler for AppState {
 
     fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
         if let Some(surface) = self.surfaces.get_mut(&output.id()) {
-            let info = self.output_state.info(&output).expect("No info for new output");
-            let mode = info.modes.iter().find(|mode| mode.current).expect("Output should have a mode");
-            let (_x, _y, w, h) = self.cli.border.compute_size(self.cli.size as i32 * info.scale_factor, mode.dimensions);
+            let info = self
+                .output_state
+                .info(&output)
+                .expect("No info for new output");
+            let mode = info
+                .modes
+                .iter()
+                .find(|mode| mode.current)
+                .expect("Output should have a mode");
+            let (_x, _y, w, h) = self
+                .cli
+                .border
+                .compute_size(self.cli.size as i32 * info.scale_factor, mode.dimensions);
 
-            if surface.layer_surface.set_buffer_scale(info.scale_factor as u32).is_ok() {
+            if surface
+                .layer_surface
+                .set_buffer_scale(info.scale_factor as u32)
+                .is_ok()
+            {
                 surface.scale = info.scale_factor;
             }
             surface.current_scale = surface.scale;
-            surface.layer_surface.set_size(w as u32 / surface.scale as u32, h as u32 / surface.scale as u32);
+            surface.layer_surface.set_size(
+                w as u32 / surface.scale as u32,
+                h as u32 / surface.scale as u32,
+            );
         }
     }
 
@@ -417,19 +480,29 @@ impl LayerShellHandler for AppState {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface) {
         // eprintln!("Window closed");
         _conn.flush().unwrap();
-        let bar = self.surfaces.values_mut()
+        let bar = self
+            .surfaces
+            .values_mut()
             .find_map(|surface| (&surface.layer_surface == layer).then_some(surface));
 
         if let Some(surface) = bar {
             surface.schedule_event(RenderEvent::Closed)
         }
-
     }
 
-    fn configure(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, layer: &LayerSurface, configure: LayerSurfaceConfigure, _serial: u32) {
-        eprintln!("Received configure event for {}: {:?}", layer.wl_surface().id(), configure);
+    fn configure(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        layer: &LayerSurface,
+        configure: LayerSurfaceConfigure,
+        _serial: u32,
+    ) {
+        // eprintln!("Received configure event for {}: {:?}", layer.wl_surface().id(), configure);
         _conn.flush().unwrap();
-        let bar = self.surfaces.values_mut()
+        let bar = self
+            .surfaces
+            .values_mut()
             .find_map(|surface| (&surface.layer_surface == layer).then_some(surface));
 
         if let Some(surface) = bar {
@@ -444,8 +517,16 @@ impl LayerShellHandler for AppState {
 }
 
 impl CompositorHandler for AppState {
-    fn scale_factor_changed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, surface: &WlSurface, new_factor: i32) {
-        let bar = self.surfaces.values_mut()
+    fn scale_factor_changed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        surface: &WlSurface,
+        new_factor: i32,
+    ) {
+        let bar = self
+            .surfaces
+            .values_mut()
             .find_map(|bar| (bar.layer_surface.wl_surface() == surface).then_some(bar));
         if let Some(bar) = bar {
             bar.schedule_event(RenderEvent::Configure {
@@ -455,20 +536,32 @@ impl CompositorHandler for AppState {
         }
     }
 
-    fn transform_changed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _surface: &WlSurface, _new_transform: Transform) {
+    fn transform_changed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &WlSurface,
+        _new_transform: Transform,
+    ) {
         // We do nothing with this
     }
 
-    fn frame(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, surface: &WlSurface, _time: u32) {
-        let bar = self.surfaces.values_mut()
+    fn frame(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        surface: &WlSurface,
+        _time: u32,
+    ) {
+        let bar = self
+            .surfaces
+            .values_mut()
             .find_map(|bar| (bar.layer_surface.wl_surface() == surface).then_some(bar));
         if let Some(bar) = bar {
             bar.draw()
         }
     }
 }
-
-
 
 fn main() -> anyhow::Result<()> {
     let cli: CliOptions = CliOptions::parse();
@@ -497,9 +590,12 @@ fn main() -> anyhow::Result<()> {
     let registry_state = RegistryState::new(&globals);
 
     let qh = event_queue.handle();
-    let mut event_loop: EventLoop<AppState> = EventLoop::try_new().expect("Failed to initialize the event loop");
+    let mut event_loop: EventLoop<AppState> =
+        EventLoop::try_new().expect("Failed to initialize the event loop");
     let loop_handle = event_loop.handle();
-    WaylandSource::new(conn.clone(), event_queue).insert(loop_handle).unwrap();
+    WaylandSource::new(conn.clone(), event_queue)
+        .insert(loop_handle)
+        .unwrap();
 
     let compositor = CompositorState::bind(&globals, &qh).expect("wl_compositor not available");
     let layer_shell = LayerShell::bind(&globals, &qh).expect("zwlr_layer_shell_v1 not available");
@@ -519,33 +615,32 @@ fn main() -> anyhow::Result<()> {
         cli,
     };
 
-    event_loop.handle().insert_source(
-        upower_channel,
-        move |_evt, _evt_md, app_state| {
+    event_loop
+        .handle()
+        .insert_source(upower_channel, move |_evt, _evt_md, app_state| {
             // eprintln!("Power state: {:?}", &*power_state_handle.read().unwrap());
             for (_, surface) in app_state.surfaces.iter_mut() {
                 surface.schedule_event(RenderEvent::DataChanged);
                 surface.handle_events();
             }
-        }
-    ).unwrap();
-
-
+        })
+        .unwrap();
 
     loop {
         event_loop.dispatch(None, &mut app_state).unwrap();
         // eprintln!("Finished event loop");
         {
             let surfaces = &mut app_state.surfaces;
-            let to_remove = surfaces.iter_mut().filter_map(
-                |(oid, bar)| bar.handle_events().then_some(oid.clone())
-            ).collect::<Vec<_>>();
-            to_remove.into_iter().for_each(|oid| {surfaces.remove(&oid); });
+            let to_remove = surfaces
+                .iter_mut()
+                .filter_map(|(oid, bar)| bar.handle_events().then_some(oid.clone()))
+                .collect::<Vec<_>>();
+            to_remove.into_iter().for_each(|oid| {
+                surfaces.remove(&oid);
+            });
         }
-
     }
 
-    
     //println!("Registry: {:#?}", env);
 }
 
