@@ -72,7 +72,8 @@ impl From<()> for CssParseError {
 impl Theme {
     pub(crate) fn load(name: &str) -> anyhow::Result<Self> {
         let name = format!("{name}.theme");
-        let path = DIRS.find_config_file(&name);
+        let path = DIRS.find_config_file(&name)
+            .or_else(|| DIRS.find_data_file(&name));
         let path = if let Some(path) = path {
             path
         } else if name == "default.theme" {
@@ -81,9 +82,13 @@ impl Theme {
             std::fs::write(&path, include_bytes!("../default.theme"))?;
             path
         } else {
+            let mut dirs = vec![DIRS.get_config_home()];
+            dirs.extend(DIRS.get_config_dirs());
+            dirs.push(DIRS.get_data_home());
+            dirs.extend(DIRS.get_data_dirs());
             bail!(
                 "Unable to find theme {name} (it should be in one of {})",
-                DIRS.get_config_dirs()
+                dirs
                     .iter()
                     .map(|buf| buf.to_string_lossy())
                     .collect::<Vec<_>>()

@@ -1,0 +1,9 @@
+[charging]
+0%	#0088FF
+
+[discharging]
+0%	#FF0000
+100%	#00FF00
+
+[nocharge]
+0%	#888888
