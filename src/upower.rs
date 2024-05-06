@@ -4,6 +4,7 @@ use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, RwLock};
 use upower_dbus;
 
+use crate::theme::ChargeState;
 use calloop::channel::Sender as CalloopSender;
 use upower_dbus::BatteryState;
 use zbus;
@@ -18,7 +19,7 @@ pub fn spawn_mock(reporter: PowerReporter) -> anyhow::Result<()> {
     std::thread::spawn(move || {
         *reporter.status.write().unwrap() = Some(PowerState {
             level: 0.0,
-            charging: false,
+            state: ChargeState::Discharging,
             time_remaining: 0.0,
         });
         let mut fill = 0u32;
@@ -52,23 +53,22 @@ fn upower_update(reporter: &PowerReporter, properties: &HashMap<String, OwnedVal
         let mut status = reporter.status.write().unwrap();
         let battery_state =
             upower_dbus::BatteryState::try_from(properties["State"].clone()).unwrap();
-        let charging = match battery_state {
-            // fully enumerate the options in case a new one is added.
-            BatteryState::Charging | BatteryState::FullyCharged | BatteryState::PendingCharge => {
-                true
-            }
-            BatteryState::Empty
-            | BatteryState::Discharging
-            | BatteryState::PendingDischarge
-            | BatteryState::Unknown => false,
+        let state = match battery_state {
+            BatteryState::Unknown => ChargeState::NoCharge,
+            BatteryState::Charging => ChargeState::Charging,
+            BatteryState::Discharging => ChargeState::Discharging,
+            BatteryState::Empty => ChargeState::NoCharge,
+            BatteryState::FullyCharged => ChargeState::NoCharge,
+            BatteryState::PendingCharge => ChargeState::NoCharge,
+            BatteryState::PendingDischarge => ChargeState::Discharging, // not sure about this one
         };
         *status = Some(PowerState {
             level: f64::try_from(&properties["Percentage"]).unwrap() as f32 / 100.0,
-            charging,
-            time_remaining: if charging {
-                i64::try_from(&properties["TimeToFull"]).unwrap()
-            } else {
-                i64::try_from(&properties["TimeToEmpty"]).unwrap()
+            state,
+            time_remaining: match state {
+                ChargeState::Charging => i64::try_from(&properties["TimeToFull"]).unwrap(),
+                ChargeState::NoCharge => 0,
+                ChargeState::Discharging => i64::try_from(&properties["TimeToEmpty"]).unwrap(),
             } as f32,
         })
     }

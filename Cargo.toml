@@ -20,6 +20,12 @@ calloop = "0.12.0"
 zbus = "3.7"
 upower_dbus = "0.3.0"
 
-palette = "0.6.0"
+palette = "0.7.0"
 wayland-protocols-wlr = { version = "0.2.0", features = ["client"] }
 clap = { version = "4.5.4", features = ["derive", "cargo"] }
+cssparser-color = "0.1.0"
+cssparser = "0.33"
+xdg = "2.5.2"
+once_cell = "1.19.0"
+lazy-regex = "3.1.0"
+thiserror = "1.0.59"

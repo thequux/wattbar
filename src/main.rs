@@ -5,9 +5,10 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+use crate::theme::{ChargeState, Theme};
 use anyhow::bail;
 use clap::Parser;
-use palette::{convert::FromColorUnclamped, FromColor, Mix, Shade};
+use palette::{Darken, FromColor};
 use smithay_client_toolkit::{
     compositor::CompositorHandler,
     compositor::CompositorState,
@@ -35,6 +36,8 @@ use wayland_client::{
     Connection, Proxy, QueueHandle,
 };
 
+pub mod colorspace;
+pub mod theme;
 pub mod upower;
 
 #[derive(Copy, Clone, Debug)]
@@ -127,6 +130,10 @@ pub struct CliOptions {
     #[arg(short, long)]
     reverse: bool,
 
+    /// The theme to use. Passing a non-existent theme will tell you where wattbar looks.
+    #[arg(short, long, default_value = "default")]
+    theme: String,
+
     /// Debugging aid to simply animate the bar.
     #[arg(long, hide = true)]
     mock_upower: bool,
@@ -137,7 +144,7 @@ pub struct PowerState {
     /// Level, between 0 and 1
     level: f32,
     /// True if line power is available.
-    charging: bool,
+    state: ChargeState,
     /// Time to full charge/empty, in seconds
     #[allow(unused)] // TODO: actually use this to display the time remaining
     time_remaining: f32,
@@ -153,6 +160,7 @@ pub struct AppState {
     layer_shell: LayerShell,
     shm: Shm,
     cli: CliOptions,
+    theme: Arc<Theme>,
 }
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -172,6 +180,7 @@ pub struct BarSurface {
     reverse: bool,
     scale: i32,
     dimensions: (u32, u32), // in raw pixels
+    theme: Arc<Theme>,
 
     current_dimensions: (u32, u32),
     current_scale: i32,
@@ -197,6 +206,7 @@ impl BarSurface {
             scale: 1,
             pool,
             side,
+            theme: state.theme.clone(),
             reverse: state.cli.reverse,
             dimensions: (0, 0),
             current_dimensions: (0, 0),
@@ -281,22 +291,13 @@ impl BarSurface {
     }
 
     // Returns fg, bg
-    fn compute_color(&self, charging: bool, level: f32) -> ([u8; 4], [u8; 4]) {
-        let fg_color = if !charging {
-            let min_color = palette::Oklab::from_color_unclamped(palette::LinSrgb::new(1., 0., 0.));
-            let max_color = palette::Oklab::from_color_unclamped(palette::LinSrgb::new(0., 1., 0.));
-            min_color.mix(&max_color, level)
-        } else {
-            palette::Oklab::from_color_unclamped(palette::Srgb::new(0., 0.5, 1.))
-        };
-
-        let bg_color = fg_color.darken(0.5);
-
-        let to_u32 = |color| {
-            palette::LinSrgba::from_color(color)
-                .into_encoding::<palette::encoding::Srgb>()
-                .into_format::<u8, u8>()
-                .into_u32::<palette::rgb::channels::Argb>()
+    fn compute_color(&self, charge_state: ChargeState, level: f32) -> ([u8; 4], [u8; 4]) {
+        let (fg_color, bg_color) = self.theme.colors_at(charge_state, level);
+        let to_u32 = |color: palette::Alpha<palette::Oklab, f32>| {
+            let color = color.darken(1. - color.alpha);
+            let lin_srgba = palette::LinSrgba::from_color(color);
+            let srgb: palette::Srgba<u8> = lin_srgba.into_encoding();
+            srgb.into_u32::<palette::rgb::channels::Argb>()
                 .to_le_bytes()
         };
 
@@ -312,15 +313,15 @@ impl BarSurface {
             return;
         }
 
-        let state = self.display_status.read().map_or(None, |lock| lock.clone());
+        let power_state = self.display_status.read().map_or(None, |lock| lock.clone());
 
-        let (charging, pct) = if let Some(state) = state {
-            (state.charging, state.level)
+        let (state, pct) = if let Some(state) = power_state {
+            (state.state, state.level)
         } else {
-            (true, 0.5)
+            (ChargeState::NoCharge, 0.5)
         };
 
-        let (fg_color, bg_color) = self.compute_color(charging, pct);
+        let (fg_color, bg_color) = self.compute_color(state, pct);
 
         let (pct, fg_color, bg_color) = if self.reverse {
             (1. - pct, bg_color, fg_color)
@@ -560,6 +561,9 @@ impl CompositorHandler for AppState {
 fn main() -> anyhow::Result<()> {
     let cli: CliOptions = CliOptions::parse();
     let display_status = Arc::new(Default::default());
+    let theme = Arc::new(Theme::load(&cli.theme)?);
+
+    eprintln!("Theme: {theme:#?}");
 
     // Spawn upower watcher
     let upower_channel = {
@@ -607,6 +611,7 @@ fn main() -> anyhow::Result<()> {
         layer_shell,
         shm,
         cli,
+        theme,
     };
 
     event_loop

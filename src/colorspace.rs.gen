@@ -1,0 +1,100 @@
+
+pub struct DisplayP3;
+impl<T: Real> Primaries<T> for DisplayP3 {
+   fn red()   -> Yxy<Any, T> { Yxy::new(T::from_f64(0.68), T::from_f64(0.32), T::from_f64(0.22898295948057848)) }
+   fn green() -> Yxy<Any, T> { Yxy::new(T::from_f64(0.265), T::from_f64(0.32), T::from_f64(0.22898295948057848)) }
+   fn blue()  -> Yxy<Any, T> { Yxy::new(T::from_f64(0.15), T::from_f64(0.32), T::from_f64(0.22898295948057848)) }
+}
+
+impl RgbSpace for DisplayP3 {
+   type Primaries = DisplayP3;
+   type WhitePoint = D65;
+
+   fn rgb_to_xyz_matrix() -> Option<Mat3<f64>> {
+       Some([0.48658878889622925, 0.26567181823925834, 0.19816944483545731, 0.22898295948057848, 0.6917492625852386, 0.07926777793418292, -3.9722211540960545e-17, 0.045114082342515606, 1.043692409466742])
+    }
+   fn xyz_to_rgb_matrix() -> Option<Mat3<f64>> {
+       Some([2.4934054905927545, -0.9313494697531197, -0.40269601949838735, -0.8294760901367887, 1.7626366915406761, 0.023624319022883214, 0.035854483842321684, -0.07619077816493341, 0.9571155270130837])
+    }
+}
+
+impl RgbStandard for DisplayP3 {
+   type Space = DisplayP3;
+   type TransferFn = Srgb;
+}
+
+
+pub struct Adobe98;
+impl<T: Real> Primaries<T> for Adobe98 {
+   fn red()   -> Yxy<Any, T> { Yxy::new(T::from_f64(0.64), T::from_f64(0.33), T::from_f64(0.29735502271138126)) }
+   fn green() -> Yxy<Any, T> { Yxy::new(T::from_f64(0.21), T::from_f64(0.33), T::from_f64(0.29735502271138126)) }
+   fn blue()  -> Yxy<Any, T> { Yxy::new(T::from_f64(0.15), T::from_f64(0.33), T::from_f64(0.29735502271138126)) }
+}
+
+impl RgbSpace for Adobe98 {
+   type Primaries = Adobe98;
+   type WhitePoint = D65;
+
+   fn rgb_to_xyz_matrix() -> Option<Mat3<f64>> {
+       Some([0.5766885288948, 0.18556095414091658, 0.18818056893522833, 0.29735502271138126, 0.6273727497145275, 0.07527222757409133, 0.02703227479194372, 0.0706898872917778, 0.991084329725536])
+    }
+   fn xyz_to_rgb_matrix() -> Option<Mat3<f64>> {
+       Some([2.0415189196908936, -0.5649878830074241, -0.34471970249770706, -0.9692294485284495, 1.8759400411649518, 0.041554449125785216, 0.01344771544314765, -0.11839263203869113, 1.0154343563051205])
+    }
+}
+
+impl RgbStandard for Adobe98 {
+   type Space = Adobe98;
+   type TransferFn = GammaFn<Adobe98Gamma>;
+}
+
+
+pub struct ProPhoto;
+impl<T: Real> Primaries<T> for ProPhoto {
+   fn red()   -> Yxy<Any, T> { Yxy::new(T::from_f64(0.734699), T::from_f64(0.265301), T::from_f64(0.28807482881940133)) }
+   fn green() -> Yxy<Any, T> { Yxy::new(T::from_f64(0.159597), T::from_f64(0.265301), T::from_f64(0.28807482881940133)) }
+   fn blue()  -> Yxy<Any, T> { Yxy::new(T::from_f64(0.036598), T::from_f64(0.265301), T::from_f64(0.28807482881940133)) }
+}
+
+impl RgbSpace for ProPhoto {
+   type Primaries = ProPhoto;
+   type WhitePoint = D50;
+
+   fn rgb_to_xyz_matrix() -> Option<Mat3<f64>> {
+       Some([0.7977666449006424, 0.13518129740053308, 0.0313477341283922, 0.28807482881940133, 0.711835234241873, 8.99369387256457e-05, 0.0, 0.0, 0.8251046025104602])
+    }
+   fn xyz_to_rgb_matrix() -> Option<Mat3<f64>> {
+       Some([1.3457868816471583, -0.25557208737979464, -0.05110186497554525, -0.544630705124902, 1.508247742845147, 0.020527447436421396, 0.0, 0.0, 1.2119675456389452])
+    }
+}
+
+impl RgbStandard for ProPhoto {
+   type Space = ProPhoto;
+   type TransferFn = ProPhoto;
+}
+
+
+pub struct Rec2020;
+impl<T: Real> Primaries<T> for Rec2020 {
+   fn red()   -> Yxy<Any, T> { Yxy::new(T::from_f64(0.708), T::from_f64(0.292), T::from_f64(0.26270526690396007)) }
+   fn green() -> Yxy<Any, T> { Yxy::new(T::from_f64(0.17), T::from_f64(0.292), T::from_f64(0.26270526690396007)) }
+   fn blue()  -> Yxy<Any, T> { Yxy::new(T::from_f64(0.131), T::from_f64(0.292), T::from_f64(0.26270526690396007)) }
+}
+
+impl RgbSpace for Rec2020 {
+   type Primaries = Rec2020;
+   type WhitePoint = D65;
+
+   fn rgb_to_xyz_matrix() -> Option<Mat3<f64>> {
+       Some([0.6369703046849442, 0.14461882533127937, 0.16884092195472122, 0.26270526690396007, 0.6780070811119392, 0.05928765198410058, 4.994202671354e-17, 0.028073066093718867, 1.0607334257155385])
+    }
+   fn xyz_to_rgb_matrix() -> Option<Mat3<f64>> {
+       Some([1.7166181567052836, -0.3556639400702603, -0.2533614061788095, -0.6666754926997716, 1.6164597562720486, 0.01576833627600951, 0.01764404205231696, -0.0427807594967139, 0.9423266112117327])
+    }
+}
+
+impl RgbStandard for Rec2020 {
+   type Space = Rec2020;
+   type TransferFn = Rec2020;
+}
+
