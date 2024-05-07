@@ -563,8 +563,6 @@ fn main() -> anyhow::Result<()> {
     let display_status = Arc::new(Default::default());
     let theme = Arc::new(Theme::load(&cli.theme)?);
 
-    eprintln!("Theme: {theme:#?}");
-
     // Spawn upower watcher
     let upower_channel = {
         let (sender, channel) = calloop::channel::channel();
