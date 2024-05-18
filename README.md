@@ -31,7 +31,7 @@ smooth change of selected colors that can be set in a cofiguration theme file.
 ## Building from sources with RUST:
 Clone the repository:
 ```
-git clone https://github.com/thequux/wattbar.git
+git clone https://github.com/thequux/wattbar.git && cd wattbar
 ```
 Compile using cargo:
 ```
