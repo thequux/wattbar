@@ -30,9 +30,13 @@ smooth change of selected colors that can be set in a cofiguration theme file.
 
 ## Building from sources with RUST:
 Clone the repository:
-```git clone https://github.com/thequux/wattbar.git```
+```
+git clone https://github.com/thequux/wattbar.git
+```
 Compile using cargo:
-```cargo install --path ./```
+```
+cargo install --path ./
+```
 The binary is installed in $HOME/.cargo/bin/wattbar
 
 ## Configuration:
@@ -40,8 +44,10 @@ Config file template is stored in $HOME/.config/wattbar/default.theme, copy/rena
 and create as many themes as you like. Inside this file you can setup three modesets 
 for the battery to use depending on its status:
 
-```[status]
-Charge_%	Color_code_representation	Background_color_code_representation```
+```
+[status]
+Charge_%	Color_code_representation	Background_color_code_representation
+```
 
 Status modes are:
 [charging], [discharging] and [nocharge] that activates the color of the bar when 
@@ -58,7 +64,8 @@ of the Color_code for the Background_color setting.
 
 Examples of themes for a bluish-light
 
-```[charging]
+```
+[charging]
 0%	#0000FF
 25%	#000044 #555588
 50%	#000044	#EEEEFF
@@ -71,11 +78,13 @@ Examples of themes for a bluish-light
 100%	#0000FF
 
 [nocharge]
-0%	#000044 #EEEEFF```
+0%	#000044 #EEEEFF
+```
 
 and redish-dark theme:
 
-```[charging]
+```
+[charging]
 0%	#FF00FF #220022
 25%	#FFFF00 #880088
 50%	#FF0000	#880000
@@ -88,7 +97,8 @@ and redish-dark theme:
 100%	#FF00FF
 
 [nocharge]
-0%	#AA0000 #440000```
+0%	#AA0000 #440000
+```
 
 ## Flags:
 Next combination of flags that can come in handy to personalize Wattbar:
@@ -96,9 +106,12 @@ Next combination of flags that can come in handy to personalize Wattbar:
 Usage: ```wattbar [OPTIONS]```
 
 Options:
-  ```-b, --border <BORDER>```  Which border to draw the bar on. One of left, right, top, 
+  ```
+  -b, --border <BORDER>
+```  Which border to draw the bar on. One of left, right, top, 
   or bottom (or l,r,t, or b) [default: bottom]
-  ```-s, --size <SIZE>```      How many virtual pixels tall the bar should be [default: 3]
+  ```
+-s, --size <SIZE>```      How many virtual pixels tall the bar should be [default: 3]
   ```-r, --reverse```          Reverse the direction of the bar (i.e., right-to-left, or 
   top-to-bottom)
   ```-t, --theme <THEME>```    The theme to use. Passing a non-existent theme will tell you 
