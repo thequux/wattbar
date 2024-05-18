@@ -101,7 +101,7 @@ and reddish-dark theme:
 ```
 
 ## Flags:
-Next combination of flags that can come in handy to personalize Wattbar:
+Next combination of flags that can come in handy to personalize Wattbar even more:
 
 Usage: ```wattbar [OPTIONS]```
 
