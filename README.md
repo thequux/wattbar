@@ -106,16 +106,16 @@ Next combination of flags that can come in handy to personalize Wattbar:
 Usage: ```wattbar [OPTIONS]```
 
 Options:
-  ```-b, --border <BORDER>```  Which border to draw the bar on. One of left, right, top, 
+*  ```-b, --border <BORDER>```  Which border to draw the bar on. One of left, right, top, 
   or bottom (or l,r,t, or b) [default: bottom]
-  ```-s, --size <SIZE>```      How many virtual pixels tall the bar should be [default: 3]
-  ```-r, --reverse```          Reverse the direction of the bar (i.e., right-to-left, or 
+*  ```-s, --size <SIZE>```      How many virtual pixels tall the bar should be [default: 3]
+*  ```-r, --reverse```          Reverse the direction of the bar (i.e., right-to-left, or 
   top-to-bottom)
-  ```-t, --theme <THEME>```    The theme to use. Passing a non-existent theme will tell you 
+*  ```-t, --theme <THEME>```    The theme to use. Passing a non-existent theme will tell you 
   where wattbar looks [default: default]
-  ```-h, --help```             Print help
-  ```-V, --version```          Print version
+*  ```-h, --help```             Print help
+*  ```-V, --version```          Print version
 
-To test discharging color change of the selected theme (or default if no theme is chosen), you 
-can use the supersecretflag ```--mock-upower```.
+**To test discharging color change of the selected theme (or default if no theme is chosen), you 
+can use the _supersecretflag_ ```--mock-upower```.**
 
