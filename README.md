@@ -62,7 +62,7 @@ Background_color that enables smooth color transformation between Charge_%'s seg
 If no Background color code is set, Wattbar automatically sets 50% darker color
 of the Color_code for the Background_color setting.
 
-Examples of themes for a bluish-light
+Examples of themes for a blueish-light
 
 ```
 [charging]
@@ -81,7 +81,7 @@ Examples of themes for a bluish-light
 0%	#000044 #EEEEFF
 ```
 
-and redish-dark theme:
+and reddish-dark theme:
 
 ```
 [charging]
