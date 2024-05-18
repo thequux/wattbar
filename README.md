@@ -37,7 +37,7 @@ Compile using cargo:
 ```
 cargo install --path ./
 ```
-The binary is installed in ```$HOME/.cargo/bin/wattbar```
+The binary is installed in ```$HOME/.cargo/bin/wattbar```. Be sure is on ```$PATH```.
 
 ## Configuration:
 Config file template is stored in ```$HOME/.config/wattbar/default.theme```, copy/rename 
