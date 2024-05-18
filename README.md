@@ -6,13 +6,13 @@ level in a narrow strip along the bottom of the screen.
 
 ## History
 Wattbar is only the latest in a long line of battery monitors starting with
-https://github.com/lichtblau/xbattbar[YAMAGUCHI Suguru's xbattbar] in 1998.
+[YAMAGUCHI Suguru's xbattbar](https://github.com/lichtblau/xbattbar) in 1998.
 
 The original program has been updated by a number of different authors to support
 more modern hardware interfaces; the original APM was already getting replaced by
 ACPI in 2005, and the kernel interfaces to access ACPI information have changed
 significantly in the time since. Thus, in 2015, I (TQ Hirsch) rewrote the utility
-from scratch in Go; this version was called https://github.com/thequux/xbattbar3[xbattbar3];
+from scratch in Go; this version was called [xbattbar3](https://github.com/thequux/xbattbar3);
 to avoid kernel interface churn, I used UPowerd to access the battery charge status.
 (For the curious, I consider the ACPI version linked above to be xbattbar2, thus the
 next version is version 3)
@@ -37,10 +37,10 @@ Compile using cargo:
 ```
 cargo install --path ./
 ```
-The binary is installed in $HOME/.cargo/bin/wattbar
+The binary is installed in ```$HOME/.cargo/bin/wattbar```
 
 ## Configuration:
-Config file template is stored in $HOME/.config/wattbar/default.theme, copy/rename 
+Config file template is stored in ```$HOME/.config/wattbar/default.theme```, copy/rename 
 and create as many themes as you like. Inside this file you can setup three modesets 
 for the battery to use depending on its status:
 
